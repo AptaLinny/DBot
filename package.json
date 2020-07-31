@@ -1,0 +1,19 @@
+{
+  "name": "enderbot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "AptaLinny",
+  "license": "ISC",
+  "dependencies": {
+    "discord.js": "^12.2.0",
+    "ejs": "^3.1.3",
+    "enmap": "^5.2.4",
+    "express": "^4.17.1",
+    "html": "^1.0.0",
+    "util": "^0.12.3"
+  }
+}
