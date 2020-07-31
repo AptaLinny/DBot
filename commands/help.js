@@ -1,52 +1,46 @@
-const { RichEmbed } = require('discord.js');
-const { owner, prefix, embedColor, discord } = require('../config');
-const { noBotPerms } = require('../utils/errors');
+const { prefix } = require('../config.json');
 
-exports.run = async (client, message, args) => {
+module.exports = {
+	name: 'help',
+	description: 'List all of my commands or info about a specific command.',
+	aliases: ['commands'],
+	usage: '[command name]',
+	cooldown: 5,
+	execute(message, args) {
+		const data = [];
+		const { commands } = message.client;
 
-    let perms = message.guild.me.permissions;
-    if (!perms.has('EMBED_LINKS')) return noBotPerms(message, 'EMBED_LINKS');
+		if (!args.length) {
+			data.push('Here\'s a list of all my commands:');
+			data.push(commands.map(command => command.name).join(', '));
+			data.push(`\nYou can send \`${prefix}help [command name]\` to get info on a specific command!`);
 
-    let cmds = Array.from(client.commands.keys());
-    let cmd = args[0];
+			return message.author.send(data, { split: true })
+				.then(() => {
+					if (message.channel.type === 'dm') return;
+					message.reply('I\'ve sent you a DM with all my commands!');
+				})
+				.catch(error => {
+					console.error(`Could not send help DM to ${message.author.tag}.\n`, error);
+					message.reply('it seems like I can\'t DM you!');
+				});
+		}
 
-    let cmdName = client.commands.get('help', 'help.name');
+		const name = args[0].toLowerCase();
+		const command = commands.get(name) || commands.find(c => c.aliases && c.aliases.includes(name));
 
-    if (cmd) {
+		if (!command) {
+			return message.reply('that\'s not a valid command!');
+		}
 
-        let cmdObj = client.commands.get(cmd) || client.commands.get(client.aliases.get(cmd));
-        if (!cmdObj) return;
-        let cmdHelp = cmdObj.help;
+		data.push(`**Name:** ${command.name}`);
 
-        let cmdHelpEmbed = new RichEmbed()
-            .setTitle(`${cmdHelp.name} | Help Information`)
-            .setDescription(cmdHelp.description)
-            .addField('Usage', `\`${cmdHelp.usage}\``, true)
-            .setColor(embedColor);
+		if (command.aliases) data.push(`**Aliases:** ${command.aliases.join(', ')}`);
+		if (command.description) data.push(`**Description:** ${command.description}`);
+		if (command.usage) data.push(`**Usage:** ${prefix}${command.name} ${command.usage}`);
 
-        if (cmdHelp.aliases.length) cmdHelpEmbed.addField('Aliases', `\`${cmdHelp.aliases.join(', ')}\``, true);
+		data.push(`**Cooldown:** ${command.cooldown || 3} second(s)`);
 
-        return message.channel.send(cmdHelpEmbed);
-    }
-
-    const helpCmds = cmds.map(cmd => {
-        return '`' + cmd + '`';
-    });
-
-    const helpEmbed = new RichEmbed()
-        .setTitle('Help Information')
-        .setDescription(`View help information for ${client.user}. \n (Do \`${prefix + cmdName} <command>\` for specific help information).`)
-        .addField('Current Prefix', prefix)
-        .addField('Bot Commands', helpCmds.join(' | '))
-        .addField('Found an issue?', `Please report any issues to <@${owner}> via the Support Discord: ${discord}.`)
-        .setColor(embedColor);
-
-    message.channel.send(helpEmbed);
-};
-
-exports.help = {
-    name: 'help',
-    aliases: ['h', 'halp'],
-    description: 'View all commands and where to receive bot support.',
-    usage: 'help'
+		message.channel.send(data, { split: true });
+	},
 };

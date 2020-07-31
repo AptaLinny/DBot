@@ -1,46 +1,74 @@
-if (Number(process.version.slice(1).split(".")[0]) < 8) throw new Error("Node 8.0.0 or higher is required. Update Node on your system.");
+const fs = require('fs');
+const Discord = require('discord.js');
+const { prefix, token } = require('./config.json');
 
-const { Client } = require('discord.js');
-const { promisify } = require('util');
-const readdir = promisify(require('fs').readdir);
-const Enmap = require('enmap');
-require('dotenv-flow').config();
+const client = new Discord.Client();
+client.commands = new Discord.Collection();
 
-const client = new Client({
-	disableEveryone:  true,
-	messageCacheMaxSize: 500,
-	messageCacheLifetime: 120,
-	messageSweepInterval: 60
+const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
+
+for (const file of commandFiles) {
+	const command = require(`./commands/${file}`);
+	client.commands.set(command.name, command);
+}
+
+const cooldowns = new Discord.Collection();
+
+client.once('ready', () => {
+	console.log('Ready!');
 });
 
-client.commands = new Enmap();
-client.aliases = new Enmap();
+client.on('message', message => {
+	if (!message.content.startsWith(prefix) || message.author.bot) return;
 
-client.logger = require('./utils/logger');
-client.config = require('./config');
+	const args = message.content.slice(prefix.length).split(/ +/);
+	const commandName = args.shift().toLowerCase();
 
-require('./utils/functions')(client);
+	const command = client.commands.get(commandName)
+		|| client.commands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
 
-const init = async () => {
-	const cmdFiles = await readdir('./commands/');
-	console.log(cmdFiles)
-	cmdFiles.forEach(f,index => {
-		if (!f.endsWith('.js')) return;
-		const response = client.loadCommand(f,index);
-		if (response) client.logger.log(response);
-	});
-	client.logger.log(`Loading a total of ${cmdFiles.length} commands.`);
+	if (!command) return;
 
-	const evtFiles = await readdir('./events/');
-	evtFiles.forEach(f => {
-		const evtName = f.split('.')[0];
-		client.logger.log(`Loading Event: ${evtName} 👌`);
-		const event = require(`./events/${f}`);
-		client.on(evtName, event.bind(null, client));
-	});
-	client.logger.log(`Loading a total of ${evtFiles.length} events.`);
+	if (command.guildOnly && message.channel.type !== 'text') {
+		return message.reply('I can\'t execute that command inside DMs!');
+	}
 
-	client.login();
-};
+	if (command.args && !args.length) {
+		let reply = `You didn't provide any arguments, ${message.author}!`;
 
-init();
+		if (command.usage) {
+			reply += `\nThe proper usage would be: \`${prefix}${command.name} ${command.usage}\``;
+		}
+
+		return message.channel.send(reply);
+	}
+
+	if (!cooldowns.has(command.name)) {
+		cooldowns.set(command.name, new Discord.Collection());
+	}
+
+	const now = Date.now();
+	const timestamps = cooldowns.get(command.name);
+	const cooldownAmount = (command.cooldown || 3) * 1000;
+
+	if (timestamps.has(message.author.id)) {
+		const expirationTime = timestamps.get(message.author.id) + cooldownAmount;
+
+		if (now < expirationTime) {
+			const timeLeft = (expirationTime - now) / 1000;
+			return message.reply(`please wait ${timeLeft.toFixed(1)} more second(s) before reusing the \`${command.name}\` command.`);
+		}
+	}
+
+	timestamps.set(message.author.id, now);
+	setTimeout(() => timestamps.delete(message.author.id), cooldownAmount);
+
+	try {
+		command.execute(message, args);
+	} catch (error) {
+		console.error(error);
+		message.reply('there was an error trying to execute that command!');
+	}
+});
+
+client.login(token);
